@@ -2,6 +2,7 @@ from datetime import datetime
 from typing import List, Optional
 from sqlmodel import SQLModel
 from uuid import UUID
+from pydantic import Field
 
 from app.DTO.image import ImageResponse, ImageCreate
 
@@ -20,10 +21,10 @@ class SKUCreate(SQLModel):
     Данные для создания SKU.
     """
     product_id: UUID
-    name: str
-    price: int
-    discount: int = 0
-    cost_price: Optional[int] = None
+    name: str = Field(min_length=1, max_length=255)
+    price: int = Field(ge=0)
+    discount: int = Field(default=0, ge=0)
+    cost_price: Optional[int] = Field(default=None, ge=0)
     article: Optional[str] = None
     images: Optional[list[ImageCreate]] = []
     characteristics: Optional[List[CharacteristicCreate]] = []
@@ -31,9 +32,9 @@ class SKUCreate(SQLModel):
 class SKUUpdate(SQLModel):
     """Данные для обновления SKU (все поля опциональны)"""
     name: Optional[str] = None
-    price: Optional[int] = None
-    discount: Optional[int] = None
-    cost_price: Optional[int] = None
+    price: Optional[int] = Field(default=None, ge=0)
+    discount: Optional[int] = Field(default=None, ge=0)
+    cost_price: Optional[int] = Field(default=None, ge=0)
     article: Optional[str] = None
     characteristics: Optional[List[CharacteristicCreate]] = None
 
@@ -67,7 +68,7 @@ class SKUPublicResponse(SQLModel):
 
 class InventoryItem(SQLModel):
     sku_id: UUID
-    quantity: int
+    quantity: int = Field(ge=1)
 
 class ReserveRequest(SQLModel):
     idempotency_key: UUID

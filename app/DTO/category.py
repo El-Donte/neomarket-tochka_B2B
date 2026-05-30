@@ -8,7 +8,7 @@ from pydantic import BaseModel, Field
 
 
 class CategoryCreate(BaseModel):
-    name: str = Field(..., title="Name")
+    name: str = Field(..., title="Name", min_length=1, max_length=255)
     parent_id: Optional[UUID] = Field(
         default=None,
         title="Parent Id",

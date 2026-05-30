@@ -26,5 +26,6 @@ class SellerRepository:
         return seller
 
     async def delete(self, seller: Seller) -> None:
-        await self.db.delete(seller)
+        seller.is_active = False
+        self.db.add(seller)
         await self.db.commit()

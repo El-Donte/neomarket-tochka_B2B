@@ -24,6 +24,14 @@ class UploadService:
         ordering: int = 0
     ) -> ImageUploadResponse:
 
+        allowed_signatures = (
+            b"\xff\xd8\xff",
+            b"\x89PNG\r\n\x1a\n",
+            b"GIF87a",
+            b"GIF89a",
+            b"RIFF",
+        )
+
         if not file.content_type or not file.content_type.startswith("image/"):
             raise HTTPException(
                 status_code=415,
@@ -41,6 +49,10 @@ class UploadService:
                 content = await file.read()
                 if len(content) > 5 * 1024 * 1024:
                     raise HTTPException(status_code=413, detail="Файл больше 5 МБ")
+                if not content.startswith(allowed_signatures) or (
+                    content.startswith(b"RIFF") and content[8:12] != b"WEBP"
+                ):
+                    raise HTTPException(status_code=415, detail="Unsupported image format")
                 await out_file.write(content)
         except HTTPException:
             raise

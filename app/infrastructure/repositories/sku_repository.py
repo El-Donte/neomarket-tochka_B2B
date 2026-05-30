@@ -1,4 +1,4 @@
-from sqlmodel import select
+from sqlmodel import select, func
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy.orm import selectinload
 from uuid import UUID
@@ -8,6 +8,7 @@ from app.models.sku import SKU, CharacteristicValue
 from app.models.invoice import Stock, InvoiceItem
 from app.models.product import Product
 from app.models.image import Image
+from app.models.outbox import OutboxEvent
 
 
 class SKURepository:
@@ -34,6 +35,7 @@ class SKURepository:
             .options(selectinload(SKU.characteristics))
             .options(selectinload(SKU.images))
             .options(selectinload(SKU.stock))
+            .options(selectinload(SKU.product))
         )
 
         return list(result.all())
@@ -49,9 +51,16 @@ class SKURepository:
             .options(selectinload(SKU.characteristics))
             .options(selectinload(SKU.images))
             .options(selectinload(SKU.stock))
+            .options(selectinload(SKU.product)) 
         )
         result = await self.session.exec(statement)
         return result.unique().first()
+
+    async def count_skus_by_product(self, product_id: UUID) -> int:
+        result = await self.session.execute(
+            select(func.count()).select_from(SKU).where(SKU.product_id == product_id)
+        )
+        return result.scalar_one()
     
     async def create_sku(self, sku: SKU) -> SKU:
         self.session.add(sku)
@@ -61,6 +70,10 @@ class SKURepository:
     async def save_sku(self, sku: SKU) -> SKU:
         self.session.add(sku)
         return sku
+
+    async def save_product(self, product: Product) -> Product:
+        self.session.add(product)
+        return product
 
     async def delete_sku(self, sku: SKU):
         await self.session.delete(sku)
@@ -77,6 +90,20 @@ class SKURepository:
 
     async def delete_stock(self, stock: Stock):
         await self.session.delete(stock)
+
+    async def get_total_active_quantity(self, product_id: UUID) -> int:
+        """
+        Возвращает сумму active_quantity всех SKU заданного товара.
+        Если SKU нет или все active_quantity = 0, возвращает 0.
+        """
+        result = await self.session.execute(
+            select(func.coalesce(func.sum(Stock.active_quantity), 0))
+            .select_from(SKU)
+            .join(Stock, SKU.id == Stock.sku_id)
+            .where(SKU.product_id == product_id)
+        )
+        total = result.scalar_one()
+        return total
 
     async def sku_used_in_invoice(self, sku_id: UUID) -> bool:
         result = await self.session.exec(
@@ -117,10 +144,16 @@ class SKURepository:
         )
         return result.first()
 
+    async def get_image_by_id(self, image_id: UUID) -> Optional[Image]:
+        return await self.session.get(Image, image_id)
+
     async def add_image(self, image: Image) -> Image:
         self.session.add(image)
         await self.session.flush()
         return image
+
+    async def add_outbox_event(self, event: OutboxEvent) -> None:
+        self.session.add(event)
 
     async def update_image(self, image: Image) -> Image:
         self.session.add(image)

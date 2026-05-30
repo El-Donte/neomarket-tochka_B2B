@@ -1,8 +1,8 @@
-from typing import Optional
+from typing import Any, Optional
 from pydantic import BaseModel
 
     
 class Error(BaseModel):
-    code: int
+    code: str
     message: str
-    details: Optional[str]
+    details: Optional[dict[str, Any]] = None

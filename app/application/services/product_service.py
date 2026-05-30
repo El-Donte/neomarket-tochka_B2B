@@ -2,6 +2,7 @@ from uuid import UUID
 from datetime import datetime, timezone
 from typing import Optional, List
 from fastapi import HTTPException, status
+import logging
 
 from app.models.product import Product, ProductStatus
 from app.models.sku import SKU, CharacteristicValue
@@ -9,19 +10,27 @@ from app.models.invoice import Stock
 from app.DTO.product import ProductCreate, ProductUpdate, ProductDashboardItem
 from app.DTO.sku import SKUCreate
 from app.models.image import Image
+from app.models.outbox import OutboxEvent
 from app.DTO.image import ImageCreate, ImageResponse, ImageUpdate, ImageAttachRequest
 from app.infrastructure.repositories.product_repository import ProductRepository
 from app.infrastructure.repositories.category_repository import CategoryRepository
+from app.infrastructure.repositories.outbox_repository import OutboxRepository
 
+logger = logging.getLogger(__name__)
 
 class ProductService:
 
-    def __init__(self, repo: ProductRepository, category_repo: Optional[CategoryRepository] = None):
+    def __init__(self, repo: ProductRepository, category_repo: CategoryRepository, outbox_repo: OutboxRepository):
         self.repo = repo
         self.category_repo = category_repo
+        self.outbox_repo = outbox_repo
 
     async def create_product(self, product_in: ProductCreate, seller_id: UUID) -> Product:
         import uuid
+        category = self.category_repo.get_by_id(product_in.category_id, True)
+        if not category:
+            raise HTTPException(status_code=400, detail={"code":"INVALID_REQUEST", "message": "Category not found"})
+
         product_data = product_in.model_dump(exclude={"characteristics", "images"})
         if not product_data.get("slug"):
             product_data["slug"] = f"{product_in.title.lower().replace(' ', '-')}-{str(uuid.uuid4())[:8]}"
@@ -77,10 +86,42 @@ class ProductService:
     async def delete_product(self, product_id: UUID, seller_id: UUID) -> None:
         product = await self.get_product(product_id)
         if product.seller_id != seller_id:
-            raise HTTPException(status_code=403)
+            raise HTTPException(status_code=403, detail="Access denied")
+        
+        if product.is_deleted:
+            raise HTTPException(status_code=400, detail="Product already deleted")
+        
+        skus = await self.repo.get_skus_by_product(product.id)
+        sku_ids = [s.id for s in skus]
         
         product.is_deleted = True
-        await self.repo.update(product)
+        self.repo.session.add(product)
+        
+        await self.outbox_repo.add(
+            OutboxEvent(
+                destination_service="moderation",
+                event_type="PRODUCT_DELETED",
+                aggregate_type="product",
+                aggregate_id=product.id,
+                idempotency_key=f"prod_del_{product.id}",
+                payload={"product_id": str(product.id)}
+            ),
+            session=self.repo.session
+        )
+
+        await self.outbox_repo.add(
+            OutboxEvent(
+                destination_service="b2c",
+                event_type="OUT_OF_STOCK",
+                aggregate_type="product",
+                aggregate_id=product.id,
+                idempotency_key=f"out_of_stock_{product.id}",
+                payload={"product_id": str(product.id), "seller_id": str(seller_id)}
+            ),
+            session=self.repo.session
+        )
+
+        await self.repo.commit()
 
     async def list_my_products(
         self,
@@ -88,7 +129,7 @@ class ProductService:
         limit: int,
         offset: int,
         status_filter: Optional[str],
-        include_deleted: bool,
+        include_deleted: bool = False,
     ):
         items, total = await self.repo.get_paginated(seller_id, limit, offset, status_filter, include_deleted)
         return {"items": items, "total_count": total, "limit": limit, "offset": offset}
@@ -144,12 +185,19 @@ class ProductService:
         if product.seller_id != seller_id:
             raise HTTPException(status_code=403)
 
-        new_image = Image(
-            product_id=product_id,
-            url=str(image_in.url),
-            ordering=image_in.ordering or 0
-        )
+        if image_in.image_id:
+            image = await self.repo.get_product_image(image_in.image_id)
+            if not image:
+                raise HTTPException(status_code=404, detail="Image not found")
+            image.product_id = product_id
+            image.sku_id = None
+            image.ordering = image_in.ordering or 0
+            return await self.repo.save_product_image(image)
 
+        if not image_in.url:
+            raise HTTPException(status_code=422, detail="Either image_id or url is required")
+
+        new_image = Image(product_id=product_id, url=str(image_in.url), ordering=image_in.ordering or 0)
         return await self.repo.save_product_image(new_image)
     
     async def update_product_image(
@@ -197,6 +245,7 @@ class ProductService:
         min_price: Optional[int] = None,
         max_price: Optional[int] = None,
         seller_id: Optional[UUID] = None,
+        filters: Optional[dict[str, list[str]]] = None,
         sort: str = "created_desc",
         limit: int = 20,
         offset: int = 0
@@ -213,6 +262,7 @@ class ProductService:
             min_price=min_price,
             max_price=max_price,
             seller_id=seller_id,
+            filters=filters,
             sort=sort,
             limit=limit,
             offset=offset

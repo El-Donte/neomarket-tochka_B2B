@@ -17,6 +17,8 @@ class Seller(SQLModel, table=True):
     phone: Optional[str] = None
     password_hash: str
     inn: str
+    is_active: bool = Field(default=True)
+    is_admin: bool = Field(default=False)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
 

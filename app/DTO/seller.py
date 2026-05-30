@@ -2,16 +2,17 @@ from typing import Optional
 from sqlmodel import SQLModel
 from uuid import UUID
 from datetime import datetime
+from pydantic import Field
 
 class SellerCreate(SQLModel):
-    first_name: str
-    last_name: str
+    first_name: str = Field(min_length=1, max_length=100)
+    last_name: str = Field(min_length=1, max_length=100)
     middle_name: Optional[str] = None
-    password: str
+    password: str = Field(min_length=8, max_length=128)
     email: str
     company_name: str
     phone: Optional[str] = None
-    inn: str
+    inn: str = Field(min_length=10, max_length=12)
     
 class SellerLogin(SQLModel):
     email: str

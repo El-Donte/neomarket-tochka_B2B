@@ -28,11 +28,6 @@ class CategoryRepository:
 
         return result.scalar_one_or_none()
     
-    async def gt_by_ids(self, ids: List[UUID]) -> Sequence[Category]:
-        query = select(Category).where(Category.id.in_(ids))
-        result = await self.session.exec(query)
-        return result.all()
-    
     async def get_by_ids(self, ids: List[UUID]) -> Sequence[Category]:
         query = select(Category).where(Category.id.in_(ids))
         result = await self.session.exec(query)

@@ -2,10 +2,11 @@ from datetime import datetime
 from typing import Optional, List
 from sqlmodel import SQLModel
 from uuid import UUID
+from pydantic import Field
 
 class InvoiceItemCreate(SQLModel):
     sku_id: UUID
-    quantity: int
+    quantity: int = Field(ge=1)
 
 class InvoiceItemRead(SQLModel):
     id: UUID
@@ -22,7 +23,7 @@ class InvoiceItemDetailRead(SQLModel):
     sku_price: Optional[int] = None
 
 class InvoiceCreate(SQLModel):
-    items: List[InvoiceItemCreate]
+    items: List[InvoiceItemCreate] = Field(min_length=1)
 
 class InvoiceRead(SQLModel):
     id: UUID
@@ -42,7 +43,7 @@ class InvoicePaginatedResponse(SQLModel):
 
 class InvoiceAcceptRequestItem(SQLModel):
     invoice_item_id: UUID
-    accepted_quantity: int
+    accepted_quantity: int = Field(ge=0)
 
 class InvoiceAcceptRequest(SQLModel):
     accepted_items: Optional[List[InvoiceAcceptRequestItem]] = None

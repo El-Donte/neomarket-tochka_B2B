@@ -43,6 +43,8 @@ class Product(SQLModel, table=True):
     orders_count: int = Field(default=0)
     is_deleted: bool = Field(default=False)
     slug: str = Field(index=True, unique=True)
+    blocking_reason_id: Optional[UUID] = Field(default=None)
+    moderator_comment: Optional[str] = Field(default=None)
     
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))

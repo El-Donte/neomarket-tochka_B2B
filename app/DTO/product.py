@@ -1,5 +1,5 @@
 from datetime import datetime
-from typing import Optional, List
+from typing import Literal, Optional, List
 from app.DTO.sku import SKURead, SKUPublicResponse, CharacteristicCreate, CharacteristicRead
 from pydantic import BaseModel, Field
 from uuid import UUID
@@ -13,9 +13,9 @@ class ProductCreate(BaseModel):
     
     seller_id НЕ передаётся — берётся из токена авторизации.
     """
-    title: str
-    images: list[ImageCreate] = Field(default_factory=list)
-    description: str
+    title: str = Field(min_length=1, max_length=255)
+    images: list[ImageCreate] = Field(min_length=1)
+    description: str = Field(min_length=1, max_length=5000)
     category_id: UUID
     slug: Optional[str] = None
     characteristics: Optional[List[CharacteristicCreate]] = []
@@ -58,8 +58,8 @@ class ProductPublicResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 class ProductUpdate(BaseModel):
-    title: Optional[str] = None
-    description: Optional[str] = None
+    title: Optional[str] = Field(default=None, min_length=1, max_length=255)
+    description: Optional[str] = Field(default=None, max_length=5000)
     category_id: Optional[UUID] = None
     characteristics: Optional[List[CharacteristicCreate]] = None
 
@@ -102,9 +102,11 @@ class ProductPublicShortResponse(BaseModel):
     id: UUID
     title: str
     slug: str
+    status: ProductStatus
     category_id: UUID
-    min_price: Optional[int] = None
+    min_price: int
     cover_image: Optional[str] = None
+    created_at: datetime
 
     model_config = {"from_attributes": True}
 
@@ -124,7 +126,7 @@ class FieldReport(BaseModel):
 class ModerationEventRequest(BaseModel):
     idempotency_key: UUID
     product_id: UUID
-    event_type: str # MODERATED, BLOCKED
+    event_type: Literal["MODERATED", "BLOCKED"]
     moderator_id: Optional[UUID] = None
     moderator_comment: Optional[str] = None
     blocking_reason_id: Optional[UUID] = None

@@ -9,6 +9,7 @@ from app.models.product import Product, ProductStatus
 from app.models.sku import SKU, CharacteristicValue
 from app.models.invoice import Stock, InvoiceItem
 from app.models.image import Image
+from app.models.outbox import OutboxEvent
 
 
 class ProductRepository:
@@ -114,6 +115,7 @@ class ProductRepository:
         min_price: Optional[int] = None,
         max_price: Optional[int] = None,
         seller_id: Optional[UUID] = None,
+        filters: Optional[dict[str, list[str]]] = None,
         sort: str = "created_desc",
         limit: int = 20,
         offset: int = 0
@@ -140,6 +142,19 @@ class ProductRepository:
             query = query.where(SKU.price >= min_price)
         if max_price is not None:
             query = query.where(SKU.price <= max_price)
+        if filters:
+            for name, values in filters.items():
+                if not values:
+                    continue
+                matching_products = (
+                    select(SKU.product_id)
+                    .join(CharacteristicValue, CharacteristicValue.sku_id == SKU.id)
+                    .where(
+                        CharacteristicValue.name == name,
+                        CharacteristicValue.value.in_(values),
+                    )
+                )
+                query = query.where(Product.id.in_(matching_products))
 
         if sort == "price_asc":
             query = query.order_by(asc(SKU.price))
@@ -171,10 +186,13 @@ class ProductRepository:
     async def get_public_by_id(self, product_id: UUID) -> Optional[Product]:
         result = await self.session.exec(
             select(Product)
+            .join(SKU)
+            .join(Stock)
             .where(
                 Product.id == product_id,
                 Product.status == ProductStatus.MODERATED,
-                Product.is_deleted == False
+                Product.is_deleted == False,
+                Stock.active_quantity > 0
             )
             .options(
                 selectinload(Product.images),
@@ -188,11 +206,15 @@ class ProductRepository:
     async def get_public_batch(self, product_ids: List[UUID]) -> List[Product]:
         result = await self.session.exec(
             select(Product)
+            .join(SKU)
+            .join(Stock)
             .where(
                 Product.id.in_(product_ids),
                 Product.status == ProductStatus.MODERATED,
-                Product.is_deleted == False
+                Product.is_deleted == False,
+                Stock.active_quantity > 0
             )
+            .distinct()
             .options(
                 selectinload(Product.images),
                 selectinload(Product.skus).selectinload(SKU.images),
@@ -209,14 +231,21 @@ class ProductRepository:
         
         result = await self.session.exec(
             select(Product)
+            .join(SKU)
+            .join(Stock)
             .where(
                 Product.category_id == product.category_id,
                 Product.id != product_id,
                 Product.status == ProductStatus.MODERATED,
-                Product.is_deleted == False
+                Product.is_deleted == False,
+                Stock.active_quantity > 0
             )
+            .distinct()
             .limit(limit)
-            .options(selectinload(Product.images))
+            .options(
+                selectinload(Product.images),
+                selectinload(Product.skus).selectinload(SKU.stock),
+            )
         )
         return list(result.all())
 
@@ -283,6 +312,9 @@ class ProductRepository:
         await self.session.commit()
         await self.session.refresh(image)
         return image
+
+    async def add_outbox_event(self, event: OutboxEvent) -> None:
+        self.session.add(event)
 
     async def delete_product_image(self, image: Image) -> None:
         await self.session.delete(image)
