@@ -68,13 +68,13 @@ async def login_seller(
         existing_seller.password_hash,
     )
     if not is_valid:
-        raise HTTPException(status_code=422, detail="Неверный email или пароль")
+        raise HTTPException(status_code=401, detail="Неверный email или пароль")
     
     tokens = create_auth_tokens(existing_seller.id)
     return tokens
 
 @router.post("/logout", status_code=204)
-async def logout_seller(response: Response):
+async def logout_seller(data: RefreshRequest):
     """
     Выход из аккаунта продавца.
     Удаляет куку с JWT токеном.
@@ -83,7 +83,7 @@ async def logout_seller(response: Response):
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(data: RefreshRequest):
-    seller_id = decode_token(data.refresh_token, expected_type="refresh ")
+    seller_id = decode_token(data.refresh_token, expected_type="refresh")
     if seller_id is None:
         raise HTTPException(status_code=401, detail="Invalid or expired refresh token")
     

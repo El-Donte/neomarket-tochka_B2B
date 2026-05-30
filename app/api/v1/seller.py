@@ -15,7 +15,7 @@ async def get_seller_service(db: AsyncSession = Depends(get_session)):
     return SellerService(SellerRepository(db))
 
 @router.get(
-    "/profile",
+    "/me",
     response_model=SellerResponse,
     summary="Мой профиль",
 )
@@ -27,7 +27,7 @@ async def get_my_profile(
 
 
 @router.patch(
-    "/profile/update",
+    "/me",
     response_model=SellerResponse,
     summary="Обновить профиль",
 )
@@ -40,7 +40,7 @@ async def update_profile(
 
 
 @router.delete(
-    "/profile/delete",
+    "/me",
     status_code=status.HTTP_204_NO_CONTENT,
     summary="Удалить аккаунт",
 )

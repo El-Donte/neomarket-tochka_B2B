@@ -4,7 +4,8 @@ from typing import Optional, Union, List
 from uuid import UUID
 
 from app.database import get_session
-from app.api.v1.dependencies.seller_depends import get_current_seller
+from app.api.v1.dependencies.seller_depends import get_current_seller, get_optional_current_seller
+from app.core.config import settings
 from app.DTO.product import (
     ProductCreate, 
     ProductResponse, 
@@ -15,6 +16,8 @@ from app.DTO.product import (
 )
 from app.DTO.sku import SKURead
 from app.infrastructure.repositories.product_repository import ProductRepository
+from app.infrastructure.repositories.category_repository import CategoryRepository
+from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.application.services.product_service import ProductService
 from app.DTO.image import ImageResponse, ImageUpdate, ImageAttachRequest
 
@@ -22,10 +25,10 @@ router = APIRouter()
 
 
 async def get_service(session: AsyncSession = Depends(get_session)) -> ProductService:
-    return ProductService(ProductRepository(session))
+    return ProductService(ProductRepository(session), CategoryRepository(session), OutboxRepository())
 
 
-@router.get("/", response_model=ProductPaginatedResponse)
+@router.get("", response_model=ProductPaginatedResponse)
 async def list_my_products(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -37,7 +40,7 @@ async def list_my_products(
     return await service.list_my_products(seller_id, limit, offset, status, include_deleted)
 
 
-@router.post("/", response_model=ProductResponse, status_code=201)
+@router.post("", response_model=ProductResponse, status_code=201)
 async def create_product(
     product_in: ProductCreate,
     seller_id: UUID = Depends(get_current_seller),
@@ -50,11 +53,21 @@ async def create_product(
 async def get_product(
     product_id: UUID,
     x_service_key: Optional[str] = Header(None, alias="X-Service-Key"),
+    seller_id: Optional[UUID] = Depends(get_optional_current_seller),
     service: ProductService = Depends(get_service),
 ):
     product = await service.get_product(product_id)
     if x_service_key:
+        if x_service_key != settings.B2B_SERVICE_KEY:
+            from fastapi import HTTPException
+            raise HTTPException(status_code=401, detail="Invalid service key")
         return ProductPublicResponse.model_validate(product)
+    if seller_id is None:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=401, detail="Authorization required")
+    if product.seller_id != seller_id:
+        from fastapi import HTTPException
+        raise HTTPException(status_code=403, detail="Forbidden")
     return product
 
 
@@ -114,7 +127,7 @@ async def delete_product_image(
 ):
     await service.delete_product_image(image_id, seller_id)
 
-@router.get("/dashboard/", response_model=list[ProductDashboardItem])
+@router.get("/dashboard/", response_model=list[ProductDashboardItem], include_in_schema=False)
 async def get_products_dashboard(
     seller_id: UUID = Depends(get_current_seller),
     service: ProductService = Depends(get_service),
@@ -123,7 +136,7 @@ async def get_products_dashboard(
     return await service.get_dashboard(seller_id, status)
 
 
-@router.post("/{id}/submit", response_model=ProductResponse)
+@router.post("/{id}/submit", response_model=ProductResponse, include_in_schema=False)
 async def submit_product_for_moderation(
     id: UUID,
     seller_id: UUID = Depends(get_current_seller),

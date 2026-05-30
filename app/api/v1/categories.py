@@ -14,7 +14,7 @@ from app.DTO.category import (
 )
 from app.application.services.category_service import CategoryService
 from app.infrastructure.repositories.category_repository import CategoryRepository
-from app.api.v1.dependencies.seller_depends import get_current_seller
+from app.api.v1.dependencies.seller_depends import require_admin_seller
 
 
 router = APIRouter()
@@ -26,7 +26,7 @@ def get_category_service(
 ) -> CategoryService:
     return CategoryService(CategoryRepository(session))
 
-@router.get("/", response_model=List[CategoryResponse])
+@router.get("", response_model=List[CategoryResponse])
 async def list_categories(
     parent_id: Optional[UUID] = Query(default=None),
     only_root: bool = Query(default=False),
@@ -35,7 +35,7 @@ async def list_categories(
     return await service.get_category_list(parent_id, only_root)
 
 @router.post(
-    "/",
+    "",
     response_model=CategoryWithChildrenResponse,
     status_code=status.HTTP_201_CREATED,
     dependencies=[Depends(security)]
@@ -43,7 +43,7 @@ async def list_categories(
 async def create_category(
     data: CategoryCreate,
     service: CategoryService = Depends(get_category_service),
-    _: UUID = Depends(get_current_seller)
+    _: UUID = Depends(require_admin_seller)
 ):
     return await service.create_category(data)
 
@@ -70,7 +70,7 @@ async def update_category(
     category_id: UUID,
     data: CategoryUpdate,
     service: CategoryService = Depends(get_category_service),
-    _: UUID = Depends(get_current_seller)
+    _: UUID = Depends(require_admin_seller)
 ):
     return await service.update_category(category_id, data)
 
@@ -82,7 +82,7 @@ async def update_category(
 async def delete_category(
     category_id: UUID,
     service: CategoryService = Depends(get_category_service),
-    _: UUID = Depends(get_current_seller)
+    _: UUID = Depends(require_admin_seller)
 ):
     await service.delete_category(category_id)
 

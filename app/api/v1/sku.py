@@ -7,6 +7,7 @@ from app.database import get_session
 from app.api.v1.dependencies.seller_depends import get_current_seller
 from app.DTO.sku import SKUCreate, SKUUpdate, SKURead
 from app.infrastructure.repositories.sku_repository import SKURepository
+from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.application.services.sku_service import SKUService
 from app.DTO.image import ImageResponse, ImageUpdate, ImageAttachRequest
 
@@ -17,10 +18,10 @@ router = APIRouter()
 async def get_service(
     session: AsyncSession = Depends(get_session),
 ) -> SKUService:
-    return SKUService(SKURepository(session))
+    return SKUService(SKURepository(session), OutboxRepository())
 
 
-@router.post("/", response_model=SKURead, status_code=201)
+@router.post("", response_model=SKURead, status_code=201)
 async def create_sku(
     sku_in: SKUCreate,
     seller_id: UUID = Depends(get_current_seller),
@@ -87,7 +88,7 @@ async def delete_sku_image(
 
 
 # Quest/Internal route kept
-@router.get("/inventory/all", response_model=list[dict])
+@router.get("/inventory/all", response_model=list[dict], include_in_schema=False)
 async def get_inventory(
     seller_id: UUID = Depends(get_current_seller),
     service: SKUService = Depends(get_service),

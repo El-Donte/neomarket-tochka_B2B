@@ -4,7 +4,7 @@ from uuid import UUID
 from typing import Optional
 
 from app.database import get_session
-from app.api.v1.dependencies.seller_depends import get_current_seller
+from app.api.v1.dependencies.seller_depends import get_current_seller, require_admin_seller
 from app.DTO.invoice import (
     InvoiceCreate, 
     InvoiceRead, 
@@ -24,7 +24,7 @@ async def get_service(
     return InvoiceService(InvoiceRepository(session))
 
 
-@router.get("/", response_model=InvoicePaginatedResponse)
+@router.get("", response_model=InvoicePaginatedResponse)
 async def list_invoices(
     limit: int = Query(20, ge=1, le=100),
     offset: int = Query(0, ge=0),
@@ -41,7 +41,7 @@ async def list_invoices(
     )
 
 
-@router.post("/", response_model=InvoiceRead, status_code=201)
+@router.post("", response_model=InvoiceRead, status_code=201)
 async def create_invoice(
     invoice_in: InvoiceCreate,
     seller_id: UUID = Depends(get_current_seller),
@@ -72,9 +72,7 @@ async def delete_invoice(
 async def accept_invoice(
     invoice_id: UUID,
     accept_in: Optional[InvoiceAcceptRequest] = None,
-    seller_id: UUID = Depends(get_current_seller),
+    seller_id: UUID = Depends(require_admin_seller),
     service: InvoiceService = Depends(get_service),
 ):
-    # In spec this is called by admin/operator. 
-    # For now, we'll allow the seller to accept it for testing, or we can use a different dependency.
     return await service.accept_invoice(invoice_id, accept_in, seller_id)

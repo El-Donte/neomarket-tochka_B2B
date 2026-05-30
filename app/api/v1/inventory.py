@@ -1,8 +1,6 @@
 from fastapi import APIRouter, Depends, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
-from uuid import UUID
 from datetime import datetime, timezone
-from typing import List
 
 from app.database import get_session
 from app.DTO.sku import (
@@ -12,10 +10,9 @@ from app.DTO.sku import (
     InventoryOrderResponse
 )
 from app.infrastructure.repositories.sku_repository import SKURepository
+from app.api.v1.dependencies.key_dependency import verify_service_key
 
 from app.models.idempotency import IdempotencyKey
-from sqlmodel import select
-import json
 
 router = APIRouter()
 
@@ -23,7 +20,7 @@ router = APIRouter()
 @router.post("/reserve", response_model=ReserveResponse)
 async def reserve_inventory(
     request: ReserveRequest,
-    x_service_key: str = Header(..., alias="X-Service-Key"),
+    _: None = Depends(verify_service_key),
     session: AsyncSession = Depends(get_session),
 ):
     repo = SKURepository(session)
@@ -70,7 +67,7 @@ async def reserve_inventory(
 @router.post("/unreserve", response_model=InventoryOrderResponse)
 async def unreserve_inventory(
     request: InventoryOrderRequest,
-    x_service_key: str = Header(..., alias="X-Service-Key"),
+    _: None = Depends(verify_service_key),
     session: AsyncSession = Depends(get_session),
 ):
     repo = SKURepository(session)
@@ -108,7 +105,7 @@ async def unreserve_inventory(
 @router.post("/fulfill", response_model=InventoryOrderResponse)
 async def fulfill_inventory(
     request: InventoryOrderRequest,
-    x_service_key: str = Header(..., alias="X-Service-Key"),
+    _: None = Depends(verify_service_key),
     session: AsyncSession = Depends(get_session),
 ):
     repo = SKURepository(session)

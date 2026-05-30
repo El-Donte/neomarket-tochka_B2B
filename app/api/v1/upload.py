@@ -18,7 +18,7 @@ def get_service(session: AsyncSession = Depends(get_session)) -> UploadService:
     return UploadService(upload_dir=UPLOAD_DIR, repository=ImageRepository(session))
 
 
-@router.post("/", response_model=ImageUploadResponse, status_code=201)
+@router.post("", response_model=ImageUploadResponse, status_code=201)
 async def upload_file(
     file: UploadFile = File(...),
     entity_type: ImageEntityType = Form(...),
