@@ -3,21 +3,23 @@ services:
     build: .
     container_name: marketplace_by_procrastination
     ports:
-      - "8080:8080"
+      - "${B2B_PORT:-8080}:8080"
     volumes:
       - .:/app
     env_file:
       - .env
     depends_on:
-      - db
+      - marketplace_db
+    networks:
+      - shared-network
 
-  db:
+  marketplace_db:
     image: postgres:16
     container_name: marketplace_db
     ports:
-      - "5432:5432"
+      - "5433:5432"
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - marketplace_postgres_data:/var/lib/postgresql/data
     restart: unless-stopped
     environment:
       POSTGRES_USER: ${DB_USER}
@@ -25,15 +27,13 @@ services:
       POSTGRES_DB: ${DB_NAME}
     env_file:
       - .env
-
-  frontend:
-    build: ./frontend
-    container_name: marketplace_frontend
-    ports:
-      - "3000:80"
-    depends_on:
-      - api
+    networks:
+      - shared-network
 
 
 volumes:
-  postgres_data:
+  marketplace_postgres_data:
+
+networks:
+  shared-network:
+    external: true

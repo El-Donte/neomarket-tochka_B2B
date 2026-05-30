@@ -18,3 +18,5 @@ alembic==1.14.0
 
 aiofiles==25.1.0
 python-slugify==8.0.4
+
+httpx>=0.24.0

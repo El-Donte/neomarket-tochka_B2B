@@ -3,7 +3,7 @@ from app.core.config import settings
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    settings.DATABASE_URL_B2B,
     echo=True,
     future=True
 )
@@ -27,6 +27,7 @@ async def create_db_and_tables():
     from app.models.sku import CharacteristicValue
     from app.models.image import Image
     from app.models.idempotency import IdempotencyKey
+    from app.models.outbox import OutboxEvent
     
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
