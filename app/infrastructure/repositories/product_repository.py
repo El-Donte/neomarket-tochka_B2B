@@ -120,33 +120,39 @@ class ProductRepository:
         limit: int = 20,
         offset: int = 0
     ):
-        query = select(Product).where(
-            Product.status == ProductStatus.MODERATED,
-            Product.is_deleted == False
+        base_ids_query = (
+            select(Product.id)
+            .where(
+                Product.status == ProductStatus.MODERATED,
+                Product.is_deleted == False,
+            )
+            .join(SKU, Product.id == SKU.product_id)
+            .join(Stock, SKU.id == Stock.sku_id)
+            .where(Stock.active_quantity > 0)
+            .group_by(Product.id) 
         )
-        
-        # Only show products with SKUs that have stock
-        query = query.join(SKU).join(Stock).where(Stock.active_quantity > 0)
 
         if category_ids:
-            query = query.where(Product.category_id.in_(category_ids))
+            base_ids_query = base_ids_query.where(Product.category_id.in_(category_ids))
         if seller_id:
-            query = query.where(Product.seller_id == seller_id)
+            base_ids_query = base_ids_query.where(Product.seller_id == seller_id)
         if search:
-            query = query.where(or_(
-                Product.title.ilike(f"%{search}%"),
-                Product.description.ilike(f"%{search}%")
-            ))
-        
+            base_ids_query = base_ids_query.where(
+                or_(
+                    Product.title.ilike(f"%{search}%"),
+                    Product.description.ilike(f"%{search}%"),
+                )
+            )
         if min_price is not None:
-            query = query.where(SKU.price >= min_price)
+            base_ids_query = base_ids_query.where(SKU.price >= min_price)
         if max_price is not None:
-            query = query.where(SKU.price <= max_price)
+            base_ids_query = base_ids_query.where(SKU.price <= max_price)
+
         if filters:
             for name, values in filters.items():
                 if not values:
                     continue
-                matching_products = (
+                subq = (
                     select(SKU.product_id)
                     .join(CharacteristicValue, CharacteristicValue.sku_id == SKU.id)
                     .where(
@@ -154,34 +160,44 @@ class ProductRepository:
                         CharacteristicValue.value.in_(values),
                     )
                 )
-                query = query.where(Product.id.in_(matching_products))
+                base_ids_query = base_ids_query.where(Product.id.in_(subq))
+
+        count_query = select(func.count()).select_from(base_ids_query.subquery())
+        total = await self.session.scalar(count_query) or 0
 
         if sort == "price_asc":
-            query = query.order_by(asc(SKU.price))
+            base_ids_query = base_ids_query.order_by(asc(func.min(SKU.price)))
         elif sort == "price_desc":
-            query = query.order_by(desc(SKU.price))
+            base_ids_query = base_ids_query.order_by(desc(func.min(SKU.price)))
         elif sort == "popular":
-            # Just created_desc for now
-            query = query.order_by(desc(Product.created_at))
+            base_ids_query = base_ids_query.group_by(Product.created_at).order_by(desc(Product.created_at))
         else:
-            query = query.order_by(desc(Product.created_at))
+            base_ids_query = base_ids_query.group_by(Product.created_at).order_by(desc(Product.created_at))
 
-        query = query.distinct()
+        paginated_ids_query = base_ids_query.offset(offset).limit(limit)
+        result = await self.session.execute(paginated_ids_query)
+        product_ids = [row[0] for row in result.all()]
 
-        count_query = select(func.count()).select_from(query.subquery())
-        total = await self.session.exec(count_query)
+        if not product_ids:
+            return [], 0
 
-        query = query.limit(limit).offset(offset).options(
-            selectinload(Product.images),
-            selectinload(Product.skus).selectinload(SKU.images),
-            selectinload(Product.skus).selectinload(SKU.stock)
+        final_query = (
+            select(Product)
+            .where(Product.id.in_(product_ids))
+            .options(
+                selectinload(Product.images),
+                selectinload(Product.skus).selectinload(SKU.images),
+                selectinload(Product.skus).selectinload(SKU.stock),
+                selectinload(Product.skus).selectinload(SKU.characteristics),
+            )
         )
-        result = await self.session.exec(query)
-        
-        products = result.all()
-        # Add min_price and cover_image manually if needed by DTO
-        # But DTO can handle it if we load correctly.
-        return products, total.one()
+        result = await self.session.execute(final_query)
+        products = result.unique().scalars().all()
+
+        product_map = {p.id: p for p in products}
+        sorted_products = [product_map[pid] for pid in product_ids if pid in product_map]
+
+        return sorted_products, total
 
     async def get_public_by_id(self, product_id: UUID) -> Optional[Product]:
         result = await self.session.exec(

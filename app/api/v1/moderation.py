@@ -3,6 +3,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from uuid import UUID
 from datetime import datetime, timezone
 from typing import List
+from sqlalchemy.exc import IntegrityError
 
 from app.database import get_session
 from app.DTO.product import ModerationEventRequest, ProductStatus
@@ -33,8 +34,11 @@ async def receive_moderation_event(
 
     if request.event_type == "MODERATED":
         product.status = ProductStatus.MODERATED
+        product.blocking_reason = None
+        product.field_reports = None
+
     elif request.event_type == "BLOCKED":
-        if request.blocking_reason_id is None:
+        if request.blocking_reason is None:
             raise HTTPException(
                 status_code=400,
                 detail={"code": "BAD_REQUEST", "message": "blocking_reason_id is required for BLOCKED"},
@@ -44,27 +48,39 @@ async def receive_moderation_event(
         else:
             product.status = ProductStatus.BLOCKED
         
-        product.blocking_reason_id = request.blocking_reason_id
-        product.moderator_comment = request.moderator_comment
-        if any(sku.active_quantity > 0 for sku in product.skus):
-            session.add(
-                OutboxEvent(
-                    destination_service="b2c",
-                    event_type="PRODUCT_BLOCKED",
-                    aggregate_type="PRODUCT",
-                    aggregate_id=product.id,
-                    idempotency_key=f"b2c:PRODUCT_BLOCKED:{product.id}:{request.idempotency_key}",
-                    payload={"product_id": str(product.id), "hard_block": request.hard_block},
-                )
+        product.blocking_reason = {
+            "id": str(request.blocking_reason.id),
+            "title": request.blocking_reason.title,
+            "comment": request.blocking_reason.comment
+        }
+
+        if request.field_reports:
+            product.field_reports = [fr.model_dump() for fr in request.field_reports]
+        else:
+            product.field_reports = None
+            
+        session.add(
+            OutboxEvent(
+                destination_service="b2c",
+                event_type="PRODUCT_BLOCKED",
+                aggregate_type="PRODUCT",
+                aggregate_id=product.id,
+                idempotency_key=f"b2c:PRODUCT_BLOCKED:{product.id}:{request.idempotency_key}",
+                payload={"product_id": str(product.id), "hard_block": request.hard_block},
             )
+        )
 
     product.updated_at = datetime.now(timezone.utc)
     
     await repo.save(product)
+
+    idemp_key = IdempotencyKey(key=key, response_status_code=204)
+    session.add(idemp_key)
     
-    session.add(IdempotencyKey(
-        key=key,
-        response_status_code=204
-    ))
-    await session.commit()
+    try:
+        await session.commit()
+    except IntegrityError:
+        await session.rollback()
+        return
+    
     return
