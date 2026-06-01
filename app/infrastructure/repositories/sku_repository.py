@@ -78,10 +78,15 @@ class SKURepository:
     async def delete_sku(self, sku: SKU):
         await self.session.delete(sku)
 
-    async def get_stock(self, sku_id: UUID, for_update: bool = False) -> Optional[Stock]:
+    async def get_stock(self, sku_id: UUID, for_update: bool = False, with_sku: bool = False) -> Optional[Stock]:
         statement = select(Stock).where(Stock.sku_id == sku_id)
+
+        if with_sku:
+            statement = statement.options(selectinload(Stock.sku))
+
         if for_update:
             statement = statement.with_for_update()
+            
         result = await self.session.exec(statement)
         return result.first()
 

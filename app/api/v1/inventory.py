@@ -9,7 +9,9 @@ from app.DTO.sku import (
     InventoryOrderRequest, 
     InventoryOrderResponse
 )
+from app.models.outbox import OutboxEvent
 from app.infrastructure.repositories.sku_repository import SKURepository
+from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.api.v1.dependencies.key_dependency import verify_service_key
 
 from app.models.idempotency import IdempotencyKey
@@ -24,6 +26,7 @@ async def reserve_inventory(
     session: AsyncSession = Depends(get_session),
 ):
     repo = SKURepository(session)
+    outbox_repo = OutboxRepository()
     # Check idempotency
     key = str(request.idempotency_key)
     idemp = await session.get(IdempotencyKey, key)
@@ -31,6 +34,7 @@ async def reserve_inventory(
         return ReserveResponse.model_validate_json(idemp.response_body)
 
     try:
+        stocks_to_update = []
         for item in request.items:
             stock = await repo.get_stock(item.sku_id, for_update=True)
             if not stock or stock.active_quantity < item.quantity:
@@ -38,11 +42,35 @@ async def reserve_inventory(
                     status_code=409, 
                     detail={"code": "INSUFFICIENT_STOCK", "sku_id": str(item.sku_id)}
                 )
-            
+            stocks_to_update.append((stock, item))
+
+        out_of_stock_skus = []
+        for stock, item in stocks_to_update:
+            old_active = stock.active_quantity
             stock.active_quantity -= item.quantity
             stock.reserved_quantity += item.quantity
             stock.updated_at = datetime.now(timezone.utc)
             session.add(stock)
+
+            if old_active > 0 and stock.active_quantity == 0:
+                out_of_stock_skus.append((stock.sku_id, stock.sku.product_id))
+
+        for sku_id, product_id in out_of_stock_skus:
+            await outbox_repo.add(
+                OutboxEvent(
+                    destination_service="b2c",
+                    event_type="SKU_OUT_OF_STOCK",
+                    aggregate_type="sku",
+                    aggregate_id=sku_id,
+                    idempotency_key=f"sku_oos_{sku_id}_{datetime.now(timezone.utc).timestamp()}",
+                    payload={
+                        "sku_id": str(sku_id),
+                        "product_id": str(product_id),
+                        "available_quantity": 0
+                    }
+                ),
+                session=session
+            )
             
         response = ReserveResponse(
             order_id=request.order_id,
