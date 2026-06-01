@@ -65,10 +65,12 @@ class ProductService:
         product = await self.get_product(product_id)
 
         if product.seller_id != seller_id:
-            raise HTTPException(status_code=403)
+            raise HTTPException(status_code=403, detail="Access denied")
 
         if product.status == ProductStatus.HARD_BLOCKED:
             raise HTTPException(status_code=403, detail="Product is hard blocked and cannot be edited")
+        
+        snapshot_before = self._product_snapshot(product)
         
         data = product_in.model_dump(exclude_unset=True)
         
@@ -81,7 +83,27 @@ class ProductService:
         for key, value in data.items():
             setattr(product, key, value)
 
-        return await self.repo.update(product)
+        updated_product = await self.repo.update(product)
+        await self.outbox_repo.add(
+            OutboxEvent(
+                destination_service="moderation",
+                event_type="PRODUCT_EDITED",
+                aggregate_type="product",
+                aggregate_id=updated_product.id,
+                idempotency_key=f"prod_edit_{updated_product.id}_{datetime.now(timezone.utc).timestamp()}",
+                payload={
+                    "product_id": str(updated_product.id),
+                    "seller_id": str(seller_id),
+                    "category_id": str(updated_product.category_id),
+                    "queue_priority": 3,
+                    "json_before": snapshot_before,
+                    "json_after": self._product_snapshot(updated_product),
+                }
+            ),
+            session=self.repo.session
+        )
+
+        return updated_product
     
     async def delete_product(self, product_id: UUID, seller_id: UUID) -> None:
         product = await self.get_product(product_id)
@@ -90,6 +112,9 @@ class ProductService:
         
         if product.is_deleted:
             raise HTTPException(status_code=400, detail="Product already deleted")
+        
+        if product.status == ProductStatus.HARD_BLOCKED:
+            raise HTTPException(status_code=403, detail="Product is Hard blocked, can't be deleted")
         
         skus = await self.repo.get_skus_by_product(product.id)
         sku_ids = [s.id for s in skus]
@@ -112,11 +137,15 @@ class ProductService:
         await self.outbox_repo.add(
             OutboxEvent(
                 destination_service="b2c",
-                event_type="OUT_OF_STOCK",
+                event_type="PRODUCT_DELETED",
                 aggregate_type="product",
                 aggregate_id=product.id,
                 idempotency_key=f"out_of_stock_{product.id}",
-                payload={"product_id": str(product.id), "seller_id": str(seller_id)}
+                payload={
+                    "product_id": str(product.id),
+                    "seller_id": str(seller_id),
+                    "sku_ids": [str(sku_id) for sku_id in sku_ids]    
+                }
             ),
             session=self.repo.session
         )
@@ -286,3 +315,15 @@ class ProductService:
         if not sku:
             raise HTTPException(status_code=404, detail="SKU not found")
         return sku
+
+    def _product_snapshot(self, product) -> dict:
+        return {
+            "id": str(product.id),
+            "title": product.title,
+            "description": product.description,
+            "category_id": str(product.category_id) if product.category_id else None,
+            "status": product.status.value if product.status else None,
+            "seller_id": str(product.seller_id),
+            "is_deleted": product.is_deleted,
+            "slug": product.slug
+        }

@@ -1,7 +1,7 @@
 from datetime import datetime
 from typing import Literal, Optional, List
 from app.DTO.sku import SKURead, SKUPublicResponse, CharacteristicCreate, CharacteristicRead
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 from uuid import UUID
 
 from app.DTO.image import ImageCreate, ImageResponse
@@ -22,6 +22,17 @@ class ProductCreate(BaseModel):
 
     model_config = {"from_attributes": True}
 
+
+class BlockingReason(BaseModel):
+    id: UUID
+    title: str
+    comment: str
+
+class FieldReport(BaseModel):
+    field_name: str
+    sku_id: Optional[UUID] = None
+    comment: str
+
 class ProductResponse(BaseModel):
     id: UUID
     seller_id: UUID
@@ -32,14 +43,28 @@ class ProductResponse(BaseModel):
     description: str
     status: ProductStatus
     deleted: bool = Field(validation_alias="is_deleted")
-    blocking_reason_id: Optional[UUID] = None
-    moderator_comment: Optional[str] = None
+    blocking_reason: Optional[BlockingReason] = None
+    field_reports: Optional[List[FieldReport]] = None
     created_at: datetime
     updated_at: datetime
     characteristics: List[CharacteristicRead] = []
     skus: List[SKURead]
 
     model_config = {"from_attributes": True}
+
+    @field_validator("blocking_reason", mode="before")
+    @classmethod
+    def parse_blocking_reason(cls, v):
+        if v is None:
+            return None
+        if isinstance(v, dict):
+            # Преобразуем строковый id в UUID
+            if "id" in v and isinstance(v["id"], str):
+                v["id"] = UUID(v["id"])
+            return BlockingReason(**v)
+        if isinstance(v, BlockingReason):
+            return v
+        return None
 
 class ProductPublicResponse(BaseModel):
     id: UUID
@@ -118,18 +143,13 @@ class ProductPublicPaginatedResponse(BaseModel):
 
     model_config = {"from_attributes": True}
 
-class FieldReport(BaseModel):
-    field_name: str
-    sku_id: Optional[UUID] = None
-    comment: str
-
 class ModerationEventRequest(BaseModel):
     idempotency_key: UUID
     product_id: UUID
     event_type: Literal["MODERATED", "BLOCKED"]
     moderator_id: Optional[UUID] = None
     moderator_comment: Optional[str] = None
-    blocking_reason_id: Optional[UUID] = None
+    blocking_reason: Optional[BlockingReason] = None
     hard_block: bool = False
     field_reports: Optional[List[FieldReport]] = None
     occurred_at: datetime

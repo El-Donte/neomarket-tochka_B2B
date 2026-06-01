@@ -52,7 +52,7 @@ class SKUService:
                 for img in sku_in.images
             ]
 
-        needs_moderation = product.status == ProductStatus.CREATED
+        needs_moderation = product.status in [ProductStatus.CREATED, ProductStatus.MODERATED, ProductStatus.BLOCKED]
 
         try:
             await self.repo.create_sku(db_sku)

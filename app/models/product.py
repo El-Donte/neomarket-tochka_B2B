@@ -1,7 +1,7 @@
 from datetime import datetime, timezone
 from typing import Optional, List, TYPE_CHECKING
 from sqlmodel import Field, SQLModel, Relationship
-from sqlalchemy import Column, String, Text, DateTime, Boolean, ForeignKey
+from sqlalchemy import Column, String, Text, DateTime, Boolean, ForeignKey, JSON
 from uuid import UUID
 from uuid6 import uuid7
 from enum import StrEnum
@@ -43,8 +43,10 @@ class Product(SQLModel, table=True):
     orders_count: int = Field(default=0)
     is_deleted: bool = Field(default=False)
     slug: str = Field(index=True, unique=True)
-    blocking_reason_id: Optional[UUID] = Field(default=None)
-    moderator_comment: Optional[str] = Field(default=None)
+    blocking_reason: Optional[dict] = Field(
+        default=None, sa_column=Column(JSON)
+    )
+    field_reports: Optional[List[dict]] = Field(default=None, sa_column=Column(JSON))
     
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))
     updated_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc), sa_column=Column(DateTime(timezone=True), nullable=False))

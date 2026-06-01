@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, Query, Header
+from fastapi import APIRouter, Depends, Query, Header, HTTPException
 from sqlalchemy.ext.asyncio import AsyncSession
 from typing import Optional, Union, List
 from uuid import UUID
@@ -59,15 +59,14 @@ async def get_product(
     product = await service.get_product(product_id)
     if x_service_key:
         if x_service_key != settings.B2B_SERVICE_KEY:
-            from fastapi import HTTPException
             raise HTTPException(status_code=401, detail="Invalid service key")
         return ProductPublicResponse.model_validate(product)
+    
     if seller_id is None:
-        from fastapi import HTTPException
         raise HTTPException(status_code=401, detail="Authorization required")
+    
     if product.seller_id != seller_id:
-        from fastapi import HTTPException
-        raise HTTPException(status_code=403, detail="Forbidden")
+        raise HTTPException(status_code=404, detail="Access denied")
     return product
 
 

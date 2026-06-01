@@ -6,12 +6,15 @@ from typing import Optional
 from app.models.invoice import Invoice, InvoiceItem, Stock
 from app.DTO.invoice import InvoiceCreate, InvoiceAcceptRequest
 from app.infrastructure.repositories.invoice_repository import InvoiceRepository
+from app.infrastructure.repositories.sku_repository import SKURepository
+from app.models.product import ProductStatus
 
 
 class InvoiceService:
 
-    def __init__(self, repo: InvoiceRepository):
+    def __init__(self, repo: InvoiceRepository, sku_repo: SKURepository):
         self.repo = repo
+        self.sku_repo = sku_repo
 
     async def list_invoices(self, seller_id: UUID, limit: int, offset: int, status_filter: Optional[str] = None):
         return await self.repo.list_invoices(seller_id, limit, offset, status_filter)
@@ -23,22 +26,37 @@ class InvoiceService:
         return invoice
 
     async def create_invoice(self, invoice_in: InvoiceCreate, seller_id: UUID):
+        if len(invoice_in.items) == 0:
+            raise HTTPException(status_code=400, detail="empty list of invoice items")
+        
+        valid_items = []
+        for skus in invoice_in.items:
+            sku_db = await self.sku_repo.get_sku_for_seller(skus.sku_id, seller_id)
+
+            if sku_db is None:
+                raise HTTPException(status_code=403, detail="Access denied")
+            
+            if sku_db.product.status != ProductStatus.MODERATED:
+                raise HTTPException(status_code=400, detail="Not moderated product")
+            
+            valid_items.append(skus)
+
         invoice = Invoice(
             seller_id=seller_id,
             status="CREATED"
         )
         await self.repo.create_invoice(invoice)
 
-        items = [
+        invoice_items = [
             InvoiceItem(
                 invoice_id=invoice.id,
                 sku_id=item.sku_id,
                 quantity=item.quantity,
             )
-            for item in invoice_in.items
+            for item in valid_items
         ]
 
-        await self.repo.add_items(items)
+        await self.repo.add_items(invoice_items)
         await self.repo.commit()
         return await self.repo.get_by_id(invoice.id)
 

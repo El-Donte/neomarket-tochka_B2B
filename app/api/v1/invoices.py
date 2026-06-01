@@ -13,6 +13,7 @@ from app.DTO.invoice import (
 )
 from app.infrastructure.repositories.invoice_repository import InvoiceRepository
 from app.application.services.invoice_service import InvoiceService
+from app.infrastructure.repositories.sku_repository import SKURepository
 
 
 router = APIRouter()
@@ -21,7 +22,7 @@ router = APIRouter()
 async def get_service(
     session: AsyncSession = Depends(get_session),
 ) -> InvoiceService:
-    return InvoiceService(InvoiceRepository(session))
+    return InvoiceService(InvoiceRepository(session), SKURepository(session))
 
 
 @router.get("", response_model=InvoicePaginatedResponse)

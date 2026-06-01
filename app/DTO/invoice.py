@@ -1,4 +1,4 @@
-from datetime import datetime
+from datetime import datetime, timezone
 from typing import Optional, List
 from sqlmodel import SQLModel
 from uuid import UUID
@@ -14,6 +14,9 @@ class InvoiceItemRead(SQLModel):
     quantity: int
     accepted_quantity: int = 0
 
+    class Config:
+        from_attributes = True
+
 class InvoiceItemDetailRead(SQLModel):
     id: UUID
     sku_id: UUID
@@ -23,17 +26,20 @@ class InvoiceItemDetailRead(SQLModel):
     sku_price: Optional[int] = None
 
 class InvoiceCreate(SQLModel):
-    items: List[InvoiceItemCreate] = Field(min_length=1)
+    items: List[InvoiceItemCreate] = []
 
 class InvoiceRead(SQLModel):
     id: UUID
     seller_id: UUID
     status: str
     items: List[InvoiceItemRead] = []
-    created_at: datetime
-    updated_at: datetime
+    created_at: datetime = datetime.now(timezone.utc)
+    updated_at: datetime = datetime.now(timezone.utc)
     accepted_at: Optional[datetime] = None
     accepted_by: Optional[UUID] = None
+
+    class Config:
+        from_attributes = True
 
 class InvoicePaginatedResponse(SQLModel):
     items: List[InvoiceRead]
