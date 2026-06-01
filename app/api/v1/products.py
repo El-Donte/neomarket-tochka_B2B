@@ -92,9 +92,18 @@ async def delete_product(
 @router.get("/{product_id}/skus", response_model=List[SKURead])
 async def list_product_skus(
     product_id: UUID,
-    seller_id: UUID = Depends(get_current_seller),
+    seller_id: Optional[UUID] = Depends(get_optional_current_seller),
     service: ProductService = Depends(get_service),
+    x_service_key: Optional[str] = Header(None, alias="X-Service-Key")
 ):
+    if x_service_key:
+        if x_service_key != settings.B2B_SERVICE_KEY:
+            raise HTTPException(status_code=401, detail="Invalid service key")
+        skus = await service.repo.get_skus_by_product(product_id)
+        return [SKURead.model_validate(sku) for sku in skus]
+
+    if seller_id is None:
+        raise HTTPException(status_code=401, detail="Authorization required")
     return await service.get_skus_by_product(product_id, seller_id)
 
 

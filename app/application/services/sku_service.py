@@ -68,7 +68,7 @@ class SKUService:
                         event_type="PRODUCT_CREATED",
                         aggregate_type="product",
                         aggregate_id=product.id,
-                        idempotency_key=f"prod_create_{product.id}", 
+                        idempotency_key = f"prod_edit_{product.id}_{int(datetime.now().timestamp())}", 
                         payload={
                             "product_id": str(product.id),
                             "seller_id": str(seller_id),
