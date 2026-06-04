@@ -36,7 +36,7 @@ async def reserve_inventory(
     try:
         stocks_to_update = []
         for item in request.items:
-            stock = await repo.get_stock(item.sku_id, for_update=True)
+            stock = await repo.get_stock(item.sku_id, for_update=True, with_sku=True)
             if not stock or stock.active_quantity < item.quantity:
                 raise HTTPException(
                     status_code=409, 

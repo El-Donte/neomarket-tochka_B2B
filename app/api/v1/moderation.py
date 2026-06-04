@@ -8,6 +8,7 @@ from sqlalchemy.exc import IntegrityError
 from app.database import get_session
 from app.DTO.product import ModerationEventRequest, ProductStatus
 from app.infrastructure.repositories.product_repository import ProductRepository
+from app.models.blocking_reason import BlockingReason
 
 from app.models.idempotency import IdempotencyKey
 from app.models.outbox import OutboxEvent
@@ -38,7 +39,7 @@ async def receive_moderation_event(
         product.field_reports = None
 
     elif request.event_type == "BLOCKED":
-        if request.blocking_reason is None:
+        if not request.blocking_reason_id:
             raise HTTPException(
                 status_code=400,
                 detail={"code": "BAD_REQUEST", "message": "blocking_reason_id is required for BLOCKED"},
@@ -48,10 +49,14 @@ async def receive_moderation_event(
         else:
             product.status = ProductStatus.BLOCKED
         
+        blocking_reason = await session.get(BlockingReason, request.blocking_reason_id)
+        if not blocking_reason or not blocking_reason.is_active:
+            raise HTTPException(400, f"Blocking reason {request.blocking_reason_id} not found or inactive")
+        
         product.blocking_reason = {
-            "id": str(request.blocking_reason.id),
-            "title": request.blocking_reason.title,
-            "comment": request.blocking_reason.comment
+            "id": str(blocking_reason.id),
+            "title": blocking_reason.title,
+            "comment": blocking_reason.description,
         }
 
         if request.field_reports:

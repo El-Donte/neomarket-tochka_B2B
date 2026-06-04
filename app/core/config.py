@@ -33,6 +33,7 @@ class Settings(BaseSettings):
     JWT_ACCESS_TOKEN_EXPIRE_MINUTES: int = 30
     JWT_SECURE: bool = False
     B2B_SERVICE_KEY: str = "dev-service-key"
+    MODERATION_SERVICE_KEY: str = "dev-service-key"
 
     MODERATION_SERVICE_URL: str
 

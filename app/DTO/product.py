@@ -149,7 +149,7 @@ class ModerationEventRequest(BaseModel):
     event_type: Literal["MODERATED", "BLOCKED"]
     moderator_id: Optional[UUID] = None
     moderator_comment: Optional[str] = None
-    blocking_reason: Optional[BlockingReason] = None
+    blocking_reason_id: Optional[UUID] = None
     hard_block: bool = False
     field_reports: Optional[List[FieldReport]] = None
     occurred_at: datetime

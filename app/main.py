@@ -12,6 +12,9 @@ from sqlmodel import select
 from fastapi.staticfiles import StaticFiles
 from .database import AsyncSessionLocal, create_db_and_tables, engine
 from app.api.v1 import auth, sku, products, invoices, upload
+from apscheduler.schedulers.asyncio import AsyncIOScheduler
+from apscheduler.triggers.interval import IntervalTrigger
+from app.services.moderation_sync import sync_blocking_reasons
 from app.core.config import settings
 from app.api.router import api_router
 from app.DTO.error import Error
@@ -20,6 +23,13 @@ from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.infrastructure.clients.moderation_client import ModerationClient
 from app.infrastructure.clients.b2c_client import B2CClient
 
+
+scheduler = AsyncIOScheduler()
+
+async def scheduled_sync():
+    """Обёртка, создающая новую сессию для каждой синхронизации."""
+    async with async_session_factory() as session:
+        await sync_blocking_reasons(session)
 
 def error_payload(code: str, message: str, details: dict | None = None) -> dict:
     payload = {"code": code, "message": message}
@@ -74,6 +84,14 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         raise Exception(f"Не удалось создать таблицы {e}")
     
+    scheduler.add_job(
+        scheduled_sync,
+        trigger=IntervalTrigger(minutes=5),  # синхронизация каждые 5 минут
+        id="sync_blocking_reasons",
+        replace_existing=True,
+    )
+    scheduler.start()
+    
     outbox_repo = OutboxRepository(AsyncSessionLocal)
     worker = OutboxWorker(outbox_repo, ModerationClient(), B2CClient())
     task = asyncio.create_task(worker.run())
@@ -81,6 +99,7 @@ async def lifespan(app: FastAPI):
     yield
 
     worker.stop()
+    scheduler.shutdown()
     await engine.dispose()
 
 def get_application() ->FastAPI:
