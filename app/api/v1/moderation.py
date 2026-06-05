@@ -60,7 +60,14 @@ async def receive_moderation_event(
         }
 
         if request.field_reports:
-            product.field_reports = [fr.model_dump() for fr in request.field_reports]
+            product.field_reports = [
+                {
+                    "field_name": fr.field_name,
+                    "sku_id": str(fr.sku_id) if fr.sku_id else None,
+                    "comment": fr.comment,
+                }
+                for fr in request.field_reports
+            ]
         else:
             product.field_reports = None
             
