@@ -20,3 +20,5 @@ aiofiles==25.1.0
 python-slugify==8.0.4
 
 httpx>=0.24.0
+pytest==9.0.3
+apscheduler==3.10.4
