@@ -1,4 +1,3 @@
-# app/services/moderation_sync.py
 import httpx
 from sqlalchemy.ext.asyncio import AsyncSession
 from app.infrastructure.repositories.blocking_reason_repository import BlockingReasonRepository
@@ -6,7 +5,7 @@ from app.core.config import settings
 
 async def sync_blocking_reasons(session: AsyncSession) -> None:
     """Загрузить все причины блокировки из сервиса модерации и обновить локальную таблицу."""
-    url = f"{settings.MODERATION_SERVICE_URL}/api/v1/blocking-reasons"
+    url = f"{settings.MODERATION_SERVICE_URL}/api/v1/blocking-reasons/list"
     headers = {"X-Service-Key": settings.MODERATION_SERVICE_KEY}
 
     async with httpx.AsyncClient(timeout=30.0) as client:

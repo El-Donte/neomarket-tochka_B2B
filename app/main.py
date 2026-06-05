@@ -14,7 +14,7 @@ from .database import AsyncSessionLocal, create_db_and_tables, engine
 from app.api.v1 import auth, sku, products, invoices, upload
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.interval import IntervalTrigger
-from app.services.moderation_sync import sync_blocking_reasons
+from app.application.services.moderation_sync import sync_blocking_reasons
 from app.core.config import settings
 from app.api.router import api_router
 from app.DTO.error import Error
@@ -22,13 +22,13 @@ from app.workers.outbox_worker import OutboxWorker
 from app.infrastructure.repositories.outbox_repository import OutboxRepository
 from app.infrastructure.clients.moderation_client import ModerationClient
 from app.infrastructure.clients.b2c_client import B2CClient
+from app.database import AsyncSessionLocal
 
 
 scheduler = AsyncIOScheduler()
 
 async def scheduled_sync():
-    """Обёртка, создающая новую сессию для каждой синхронизации."""
-    async with async_session_factory() as session:
+    async with AsyncSessionLocal() as session:
         await sync_blocking_reasons(session)
 
 def error_payload(code: str, message: str, details: dict | None = None) -> dict:
@@ -86,7 +86,7 @@ async def lifespan(app: FastAPI):
     
     scheduler.add_job(
         scheduled_sync,
-        trigger=IntervalTrigger(minutes=5),  # синхронизация каждые 5 минут
+        trigger=IntervalTrigger(minutes=1),  # синхронизация каждые 5 минут
         id="sync_blocking_reasons",
         replace_existing=True,
     )
