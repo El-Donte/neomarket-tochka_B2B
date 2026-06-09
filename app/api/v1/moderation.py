@@ -70,7 +70,11 @@ async def receive_moderation_event(
             ]
         else:
             product.field_reports = None
-            
+
+        await session.refresh(product, ["skus"])
+        sku_ids = [str(sku.id) for sku in product.skus]
+        event_date = datetime.now(timezone.utc).isoformat()
+
         session.add(
             OutboxEvent(
                 destination_service="b2c",
@@ -78,7 +82,13 @@ async def receive_moderation_event(
                 aggregate_type="PRODUCT",
                 aggregate_id=product.id,
                 idempotency_key=f"b2c:PRODUCT_BLOCKED:{product.id}:{request.idempotency_key}",
-                payload={"product_id": str(product.id), "hard_block": request.hard_block},
+                payload={
+                    "product_id": str(product.id),
+                    "hard_block": request.hard_block,
+                    "sku_ids": sku_ids,
+                    "date": event_date
+                }
+
             )
         )
 
